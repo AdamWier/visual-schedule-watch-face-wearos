@@ -23,6 +23,7 @@ import at.bitfire.dav4jvm.exception.DavException
 import at.bitfire.dav4jvm.property.CalendarData
 import at.bitfire.dav4jvm.property.GetETag
 import at.bitfire.dav4jvm.property.SyncToken
+import biweekly.Biweekly
 import com.example.android.wearable.visualScheduleWatchface.R
 import java.io.EOFException
 import java.io.Reader
@@ -32,7 +33,6 @@ import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -60,7 +60,9 @@ class AsyncDav(applicationContext: Context) : AsyncTask<(Array<EventItem>) -> Un
     private val location = "https://posteo.de:8443/calendars/wier.adam/default/"
 
     override fun doInBackground(vararg params: (Array<EventItem>) -> Unit ): (Array<EventItem>) -> Unit{
-        val request = this.preapreRequest(Date.from(Instant.now().minus(Duration.ofDays(1))), Date.from(Instant.now().plus(Duration.ofDays(1))));
+        val start = Date.from(Instant.now().minus(Duration.ofSeconds(ZoneId.systemDefault().rules.getOffset(Instant.now()).totalSeconds.toLong())))
+        val end = Date.from(Instant.now().plus(Duration.ofHours(24)))
+        val request = this.preapreRequest(start, end);
         val response = httpClient.newCall(
             Request.Builder()
             .url(location)
@@ -74,16 +76,24 @@ class AsyncDav(applicationContext: Context) : AsyncTask<(Array<EventItem>) -> Un
 
     private fun responseCallback(response: Response, relation: Response.HrefRelation): Unit{
         val calendarData = response.properties.get(0) as CalendarData
-        val splits = calendarData.iCalendar.toString().lines().map {
-            it.split(":")
-        }.map { it.get(0) to it.get(1) }.associate { it }
-        val combined1 = splits.get("DTSTART") + splits.get("X-WR-Timezone")
-        val combined2 = splits.get("DTEND") + splits.get("X-WR-Timezone")
-        val pattern = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z' z");
-        val start = ZonedDateTime.parse( combined1, pattern).withZoneSameInstant(ZoneId.systemDefault())
-        val end = ZonedDateTime.parse( combined2, pattern).withZoneSameInstant(ZoneId.systemDefault())
+        val event = parseCalDavResponse(calendarData)
+        if(event != null){
+            events.add(event)
+        }
+    }
 
-        events.add(EventItem(start =  start, end = end, summary = splits.get("SUMMARY")!!))
+    private fun parseCalDavResponse(calendarData: CalendarData): EventItem?{
+        val calendarString = calendarData.iCalendar.toString()
+        val calendar = Biweekly.parse(calendarString).first()
+        val eventsMapped = calendar.events.filter { it.dateStart.value.hasTime() }
+            .filter{ android.text.format.DateUtils.isToday(it.dateStart.value.time)}.map {
+                EventItem(
+                    summary = it.summary.value,
+                    start = ZonedDateTime.ofInstant(Instant.ofEpochMilli(it.dateStart.value.time), ZoneId.systemDefault()),
+                    end = ZonedDateTime.ofInstant(Instant.ofEpochMilli(it.dateEnd.value.time), ZoneId.systemDefault())
+                )
+            }
+        return eventsMapped.minByOrNull { it.start }
     }
 
     private fun processMultiStatus(reader: Reader, location: String, callback: MultiResponseCallback): List<Property> {
@@ -133,7 +143,9 @@ class AsyncDav(applicationContext: Context) : AsyncTask<(Array<EventItem>) -> Un
     }
 
     override fun onPostExecute(callback: (Array<EventItem>) -> Unit) {
-        callback(events.toTypedArray())
+        events.sortBy ({ it.start })
+        val currentAndLaterEvents = events.filter { it.end > ZonedDateTime.now() }
+        callback(currentAndLaterEvents.toTypedArray())
     }
 
     private fun preapreRequest(start: Date, end: Date): String {

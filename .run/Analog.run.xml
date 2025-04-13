@@ -1,5 +1,5 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Analog" type="AndroidWatchFaceConfigurationType" factoryName="AndroidWatchFaceConfigurationFactory" show_console_on_std_err="false" show_console_on_std_out="false">
+  <configuration default="false" name="Analog" type="AndroidWatchFaceConfigurationType" factoryName="AndroidWatchFaceConfigurationFactory" activateToolWindowBeforeRun="false" show_console_on_std_err="false" show_console_on_std_out="false">
     <module name="WatchFaceKotlin.app" />
     <option name="allowRunningInParallel" value="false" />
     <option name="projectPathOnTarget" />
